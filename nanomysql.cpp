@@ -266,18 +266,20 @@ struct SHA1_t
 	}
 };
 
-int main ( int argc, const char ** argv)
+int main ( int argc, char ** argv)
 {
-	const char *sHost = "localhost", *sUser = "root", *sPass = "";
-	int iPort = 3306;
-	for ( int i=1; i+1<argc; i+=2 )
-	{
-		if ( !strcmp ( argv[i], "-h" ) )		sHost = argv[i+1];
-		else if ( !strcmp ( argv[i], "-u" ) )	sUser = argv[i+1];
-		else if ( !strcmp ( argv[i], "-p" ) )	sPass = argv[i+1];
-		else if ( !strcmp ( argv[i], "-P" ) )	iPort = atoi(argv[i+1]);
-		else die ( "unknown switch %s\nusage: nanomysql [-h host] [-P port] [-u user] [-p password]", argv[i] );
-	}
+    char *sHost = NULL, *sUser = NULL, *sPass = NULL, *sDB = NULL, *sql = NULL;
+    int iPort = 0;
+    for ( int i=1; i+1<argc; i+=2 )
+    {   
+        if ( !strcmp ( argv[i], "-h" ) )        sHost = argv[i+1];
+        else if ( !strcmp ( argv[i], "-u" ) )   sUser = argv[i+1];
+        else if ( !strcmp ( argv[i], "-p" ) )   sPass = argv[i+1];
+        else if ( !strcmp ( argv[i], "-P" ) )   iPort = atoi(argv[i+1]);
+        else if ( !strcmp ( argv[i], "-d" ) )   sDB   = argv[i+1];
+        else if ( !strcmp ( argv[i], "-e" ) )   sql   = argv[i+1];
+        else die ( "unknown switch %s\nusage: nanomysql [-h host] [-P port] [-u user] [-p password] [-d dbname] [-e sql]", argv[i] );
+    }   
 
 #ifdef _MSC_VER
 	WSADATA tWSAData;
@@ -348,35 +350,72 @@ int main ( int argc, const char ** argv)
 	if ( db.ReadPacket()<0 )
 		die ( "auth failed: %s", db.m_sError.c_str() );
 
-	// action!
-	printf ( "connected to mysql %s\n\n", sVer.c_str() );
-	char q[4096];
-	for ( ;; )
-	{
-		printf ( "nanomysql> " );
-		fflush ( stdout );
-		if ( !fgets ( q, sizeof(q), stdin ) || !strcmp ( q, "quit\n" ) || !strcmp ( q, "exit\n" ) )
-		{
-			printf ( "bye\n\n" );
-			break;
-		}
-		if ( !db.Query(q) )
-		{
-			printf ( "error: %s\n\n", db.m_sError.c_str() );
-			continue;
-		}
-		int n = 0;
-		for ( size_t i=0; i<db.m_dFields.size(); i++ )
-			printf ( "%s%s", i ? ", " : "", db.m_dFields[i].c_str() );
-		if ( db.m_dFields.size() )
-			printf ( "\n---\n" );
-		while ( db.FetchRow() )
-		{
-			for ( size_t i=0; i<db.m_dRow.size(); i++ )
-				printf ( "%s%s", i ? ", " : "", db.m_dRow[i].c_str() );
-			printf ( "\n" );
-			n++;
-		}
-		printf ( "---\nok, %d row(s)\n\n", n );
-	}
+    // action!
+    char q[4096];
+
+    if (sDB != NULL && sql != NULL) goto _non_interactive;
+
+_interactive:
+    printf ( "connected to mysql %s\n\n", sVer.c_str() );
+    for ( ;; )
+    {
+        printf ( "nanomysql> " );
+        fflush ( stdout );
+        if ( !fgets ( q, sizeof(q), stdin ) || !strcmp ( q, "quit\n" ) || !strcmp ( q, "exit\n" ) )
+        {
+            printf ( "bye\n\n" );
+            break;
+        }
+
+        if ( !db.Query(q) )
+        {
+            printf ( "error: %s\r\n", db.m_sError.c_str() );
+            continue;
+        }
+        int n = 0;
+        for ( size_t i=0; i<db.m_dFields.size(); i++ )
+            printf ( "%s%s", i ? ", " : "", db.m_dFields[i].c_str() );
+        if ( db.m_dFields.size() )
+            printf ( "\r\n---\r\n" );
+        while ( db.FetchRow() )
+        {
+            for ( size_t i=0; i<db.m_dRow.size(); i++ )
+                printf ( "%s%s", i ? ", " : "", db.m_dRow[i].c_str() );
+            printf ( "\r\n" );
+            n++;
+        }
+        printf ( "---\nok, %d row(s)\n\n", n );
+    }
+
+    return 0;
+
+_non_interactive:
+    int i = 0;
+    sprintf(q, "use %s", sDB);
+
+_again:
+    if ( !db.Query(q) )
+    {
+        printf ( "error: %s\r\n", db.m_sError.c_str() );
+    }
+    int n = 0;
+    for ( size_t i=0; i<db.m_dFields.size(); i++ )
+        printf ( "%s%s", i ? ", " : "", db.m_dFields[i].c_str() );
+    if ( db.m_dFields.size() )
+        printf ( "\r\n---\r\n" );
+    while ( db.FetchRow() )
+    {
+        for ( size_t i=0; i<db.m_dRow.size(); i++ )
+            printf ( "%s%s", i ? ", " : "", db.m_dRow[i].c_str() );
+        printf ( "\r\n" );
+        n++;
+    }
+
+    if (i == 0) {
+        i++;
+        memcpy(q, sql, strlen(sql));
+        goto _again;
+    }
+
+    return 0;
 }
