@@ -413,7 +413,7 @@ _again:
 
     if (i == 0) {
         i++;
-        memcpy(q, sql, strlen(sql));
+        strcpy(q, sql);
         goto _again;
     }
 
